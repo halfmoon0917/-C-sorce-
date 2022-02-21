@@ -1,0 +1,119 @@
+import pandas as pd
+from fbprophet import Prophet
+df = pd.read_csv('7211.csv')
+print(df)
+
+# 列名を日時はds、目的変数をyに変更する。Prophetの仕様のため。
+new_df = df.rename(columns={'datetime': 'ds', 'close': 'y'})
+print(new_df)
+
+# 予測したい数
+predict_num = 10
+# 訓練データの作成する。全データから予測したい数を引いた数
+cnt = len(new_df) - predict_num
+train_df = new_df[:cnt]
+print(train_df)
+
+model = Prophet(
+    growth='linear', # 傾向変動の関数．非線形は'logistic'
+    yearly_seasonality = True, # 年次の季節変動を考慮有無
+    weekly_seasonality = False, # 週次の季節変動を考慮有無
+    daily_seasonality = False, # 日次の季節変動を考慮有無
+    changepoints = None, #  傾向変化点のリスト
+    changepoint_range = 0.90, # 傾向変化点の候補の幅で先頭からの割合。
+    changepoint_prior_scale = 0.55, # 傾向変化点の事前分布のスケール値。パラメータの柔軟性
+    n_changepoints = 25, # 傾向変化点の数
+) 
+model.fit(train_df)
+
+
+# 学習データに予測したい期間を追加する
+future = model.make_future_dataframe(periods = predict_num) #,freq='M')ccc
+print(future)
+
+# 予測する
+forecast = model.predict(future)
+print(forecast)
+
+# 可視化する
+import matplotlib.pyplot as plt
+from fbprophet.plot import add_changepoints_to_plot
+forecast['cap'] = 10000
+#forecast['floor'] = 21000
+fig1 = model.plot(forecast)
+a = add_changepoints_to_plot(fig1.gca(), model, forecast)
+plt.show()
+
+# 規則性を可視化
+fig2 = model.plot_components(forecast)
+plt.show()
+
+import seaborn as sns
+
+# 変化率を追記
+df3 = train_df.loc[model.changepoints.index]
+df3['delta'] = model.params['delta'].ravel()
+
+# 変化点を取得
+df3['ds'] = df3['ds'].astype(str)
+df3['delta'] = df3['delta'].round(3)
+df4 = df3[df3['delta'] != 0]
+print(df4)
+
+# 変化点をグラフ化
+import matplotlib.pyplot as plt
+ax = sns.catplot(x = 'ds', y = 'delta', data = df4, color='magenta')
+ax.set_xticklabels(rotation=90)
+plt.grid()
+plt.show()
+# 変化点をリストで抽出
+ds_list = df4['ds'].tolist()
+print(ds_list)
+
+# 変化点を指定してモデルの作成
+model2 = Prophet(
+    growth='linear', # 傾向変動の関数．非線形は'logistic'
+    yearly_seasonality = True, # 年次の季節変動を考慮有無
+    weekly_seasonality = False, # 週次の季節変動を考慮有無
+    daily_seasonality = False, # 日次の季節変動を考慮有無
+    changepoints = ds_list, #  傾向変化点のリスト
+    #changepoint_range = 0.80, # 傾向変化点の候補の幅で先頭からの割合。
+    #changepoint_prior_scale = 0.5, # 傾向変化点の事前分布のスケール値。パラメータの柔軟性
+    #n_changepoints = 25, # 傾向変化点の数
+) 
+model2.fit(train_df)
+
+# 学習データに予測したい期間を追加する
+future2 = model2.make_future_dataframe(periods = predict_num) #,freq='M')
+print(future2)
+
+forecast2 = model2.predict(future2)
+#print(forecast2)
+
+# 可視化
+forecast2['cap'] = 10000
+#forecast['floor'] = 21000
+fig2_1 = model2.plot(forecast2)
+b = add_changepoints_to_plot(fig2_1.gca(), model2, forecast)
+plt.show()
+
+fig2_2 = model2.plot_components(forecast2)
+plt.show()
+
+import json
+from fbprophet.serialize import model_to_json, model_from_json
+with open('serialized_model.json', 'w') as fout:
+    json.dump(model_to_json(model2), fout)
+    
+import json
+from fbprophet.serialize import model_to_json, model_from_json
+with open('serialized_model.json', 'r') as fin:
+    model3 = model_from_json(json.load(fin))
+    
+#未来を予測する
+import fbprophet.plot as fp
+future3 = model3.make_future_dataframe(periods=31)
+forecast3 = model3.predict(future3)
+fig3 = model3.plot(forecast3)
+fp.add_changepoints_to_plot(fig3.gca(), model3, forecast3);
+plt.show()
